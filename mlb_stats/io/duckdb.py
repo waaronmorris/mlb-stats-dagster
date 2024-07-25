@@ -1,9 +1,17 @@
 import dagster as dg
+import pyarrow as pa
+import pyarrow.parquet as pq
 from pyarrow import fs as pafs
 
 
 class DuckPondIOManager(dg.IOManager):
-    def __init__(self, bucket_name, account_id, client_access_key, client_secret, duckdb, prefix=""):
+    def __init__(self,
+                 bucket_name,
+                 account_id,
+                 client_access_key,
+                 client_secret,
+                 duckdb,
+                 prefix=""):
         self.bucket_name = bucket_name
         self.duckdb = duckdb
         self.account_id = account_id
@@ -20,26 +28,42 @@ class DuckPondIOManager(dg.IOManager):
             endpoint_override=_connection_url
         )
 
-    def _get_s3_url(self, context):
+    def _get_r2_url(self, context):
         if context.has_asset_key:
             id = context.get_asset_identifier()
         else:
             id = context.get_identifier()
-        return f"s3://{self.bucket_name}/{self.prefix}{'/'.join(id)}.parquet"
+        return f"r2://{self.bucket_name}/{self.prefix}{'/'.join(id)}.parquet"
 
-    def handle_output(self, context, select_statement: str):
-        if select_statement is None:
-            return
+    def handle_output(self, context, obj: "pd.DataFrame"):
+        """
+        Handle the output of the asset and store it in the S3 bucket as a parquet file
+        :param context:
+        :param obj:  table to store in the S3 bucket
+        :return:
+        """
 
-        if not isinstance(select_statement, str):
-            raise ValueError(f"Expected asset to return a SQL; got {select_statement!r}")
+        if context.has_asset_key:
+            id = context.get_asset_identifier()
+        else:
+            id = context.get_identifier()
 
-        self.duckdb.query(
-            f"COPY ({select_statement}) TO '{self._get_s3_url(context)}' (FORMAT PARQUET)"
+        r2 = self._connection
+        table = pa.Table.from_pandas(df=obj, preserve_index=False)
+
+        pq.write_table(
+            table=table,
+            where=f'{self.bucket_name}/{self.prefix}{"/".join(id)}.parquet',
+            filesystem=r2
         )
 
+
+
     def load_input(self, context) -> str:
-        return f"SELECT * FROM read_parquet('{self._get_s3_url(context)}')"
+        # Load the data from the S3 bucket
+        table = self.duckdb.query(
+            f"COPY '{self._get_r2_url(context)}' TO '{context}' (FORMAT PARQUET)"
+        )
 
 
 @dg.io_manager
