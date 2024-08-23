@@ -1,34 +1,66 @@
-from dagster import Definitions, load_assets_from_modules, EnvVar
+import warnings
+
+import dagster as dg
 import duckdb
 
-from . import assets
-from . import io
-from . import resources
+warnings.filterwarnings("ignore", category=dg.ExperimentalWarning)
 
-all_assets = load_assets_from_modules([assets])
+from dagster_dbt import DbtCliResource
 
-# Initialize the DuckDB instance
-duckdb = duckdb.connect(database=":memory:", read_only=False)
+from . import assets, io, jobs, resources, project, schedules
+
+import mlb_stats.project as project
+import mlb_stats.assets as assets
+import mlb_stats.resources as resources
+import mlb_stats.jobs as jobs
+import mlb_stats.schedules as schedules
+
+from langchain_anthropic import ChatAnthropic
 
 
-defs = Definitions(
-    assets=all_assets,
+def create_ddb():
+    conn = duckdb.connect(':memory:')
+    conn.execute("INSTALL httpfs; LOAD httpfs;")
+    conn.execute(f"""CREATE SECRET (
+    TYPE R2,
+    KEY_ID '{dg.EnvVar("CLOUDFLARE_CLIENT_ACCESS_KEY").get_value()}',
+    SECRET '{dg.EnvVar("CLOUDFLARE_CLIENT_SECRET").get_value()}',
+    ACCOUNT_ID '{dg.EnvVar("CLOUDFLARE_ACCOUNT_ID").get_value()}' -- your 33 character hexadecimal account ID
+    );""")
+
+    return conn
+
+
+defs = dg.Definitions(
+    assets=assets.all_assets,
+    jobs=jobs.jobs(),
+    schedules=schedules.generate_schedules(),
+    # sensors=[
+    #     sensors.box_scores_sensor
+    # ],
     resources={
         'fantasy_loader': resources.FantasyLoader(
             base_url="https://fantasy-baseball-loader-5yibsupwla-uc.a.run.app/"
         ),
         'cloudflare': resources.Cloudflare(
-            bucket=EnvVar("CLOUDFLARE_BUCKET"),
-            account_id=EnvVar("CLOUDFLARE_ACCOUNT_ID"),
-            client_access_key=EnvVar("CLOUDFLARE_CLIENT_ACCESS_KEY"),
-            client_secret=EnvVar("CLOUDFLARE_CLIENT_SECRET")
+            bucket=dg.EnvVar("CLOUDFLARE_BUCKET").get_value(),
+            account_id=dg.EnvVar("CLOUDFLARE_ACCOUNT_ID").get_value(),
+            client_access_key=dg.EnvVar("CLOUDFLARE_CLIENT_ACCESS_KEY").get_value(),
+            client_secret=dg.EnvVar("CLOUDFLARE_CLIENT_SECRET").get_value()
         ),
         'duckdb_io_manager': io.DuckPondIOManager(
-            bucket_name=EnvVar("CLOUDFLARE_BUCKET"),
-            account_id=EnvVar("CLOUDFLARE_ACCOUNT_ID"),
-            client_access_key=EnvVar("CLOUDFLARE_CLIENT_ACCESS_KEY"),
-            client_secret=EnvVar("CLOUDFLARE_CLIENT_SECRET"),
-            duckdb=duckdb
-        )
+            bucket_name=dg.EnvVar("CLOUDFLARE_BUCKET").get_value(),
+            account_id=dg.EnvVar("CLOUDFLARE_ACCOUNT_ID").get_value(),
+            client_access_key=dg.EnvVar("CLOUDFLARE_CLIENT_ACCESS_KEY").get_value(),
+            client_secret=dg.EnvVar("CLOUDFLARE_CLIENT_SECRET").get_value(),
+            duckdb=create_ddb()
+        ),
+        "dbt": DbtCliResource(project_dir=project.mlb_stats_dbt_project),
+        "column_renamer": resources.ColumnRenamer(
+            llm_model=ChatAnthropic(
+                temperature=0,
+                api_key=dg.EnvVar('ANTHROPIC_API_KEY').get_value(),
+                model_name="claude-3-haiku-20240307")
+        ),
     }
 )

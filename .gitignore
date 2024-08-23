@@ -172,3 +172,12 @@ logs/
 /.idea
 *.db
 *.json
+
+target
+logs
+dbt_packages
+postgres-data
+*.db
+*.ddb
+*.duckdb
+

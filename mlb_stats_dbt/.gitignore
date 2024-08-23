@@ -1,0 +1,9 @@
+
+target/
+dbt_packages/
+logs/
+
+.idea/*
+.env
+.venv
+*.duckdb

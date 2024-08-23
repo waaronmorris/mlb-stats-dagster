@@ -1,4 +1,5 @@
 import dagster as dg
+import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 from pyarrow import fs as pafs
@@ -17,7 +18,6 @@ class DuckPondIOManager(dg.IOManager):
         self.account_id = account_id
         self.client_access_key = client_access_key
         self.client_secret = client_secret
-        self.prefix = prefix
 
     @property
     def _connection(self):
@@ -35,7 +35,15 @@ class DuckPondIOManager(dg.IOManager):
             id = context.get_identifier()
         return f"r2://{self.bucket_name}/{self.prefix}{'/'.join(id)}.parquet"
 
-    def handle_output(self, context, obj: "pd.DataFrame"):
+    def __get_path(self, context):
+        __path = [self.bucket_name, *context.asset_key.path]
+
+        if context.has_partition_key:
+            __path.append(context.partition_key.replace('-', ''))
+
+        return '/'.join(__path)
+
+    def handle_output(self, context, obj):
         """
         Handle the output of the asset and store it in the S3 bucket as a parquet file
         :param context:
@@ -43,27 +51,43 @@ class DuckPondIOManager(dg.IOManager):
         :return:
         """
 
-        if context.has_asset_key:
-            id = context.get_asset_identifier()
-        else:
-            id = context.get_identifier()
+        if not isinstance(obj, pd.DataFrame):
+            return
+
+        file_path = self.__get_path(context)
 
         r2 = self._connection
-        table = pa.Table.from_pandas(df=obj, preserve_index=False)
+        table = pa.Table.from_pandas(
+            df=obj,
+            preserve_index=False
+        )
 
         pq.write_table(
             table=table,
-            where=f'{self.bucket_name}/{self.prefix}{"/".join(id)}.parquet',
+            where=f'{file_path}.parquet',
             filesystem=r2
         )
 
+    def load_input(self, context: dg.InputContext):
+        df = pd.DataFrame()
+        asset_partitions_def = context.asset_partitions_def
+        if len(context.asset_partition_keys) > 1:
+            for partition_key in context.asset_partition_keys:
+                file_path = '/'.join([self.bucket_name, *context.asset_key.path, partition_key.replace('-', '')])
+                try:
+                    df = pd.concat([
+                        df,
+                        pq.read_table(
+                            source=f'{file_path}.parquet',
+                            filesystem=self._connection
+                        ).to_pandas()])
+                except Exception as e:
+                    context.log.error(f"Error reading {file_path}.parquet: {e}")
+                    df = pd.concat([
+                        df,
+                        pd.DataFrame()])
+        return df
 
-
-    def load_input(self, context) -> str:
-        # Load the data from the S3 bucket
-        table = self.duckdb.query(
-            f"COPY '{self._get_r2_url(context)}' TO '{context}' (FORMAT PARQUET)"
-        )
 
 
 @dg.io_manager

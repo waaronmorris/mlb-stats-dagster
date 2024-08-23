@@ -6,7 +6,7 @@ import datetime as dt
 
 class ScheduleLoaderConfig(Config):
     start_date: str = Field(
-        description="The start date for the schedule",
+        description="The START_DATE date for the schedule",
         is_required=True,
         default= (dt.datetime.now() - dt.timedelta(days=30)).strftime('%Y%m%d')
     )

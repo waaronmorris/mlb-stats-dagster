@@ -1,0 +1,4 @@
+locations:
+  - location_name: "mlb-stats"
+    code_source:
+      module_name: "mlb_stats"

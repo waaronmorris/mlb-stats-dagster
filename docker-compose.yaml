@@ -1,0 +1,122 @@
+services:
+  # This service runs the postgres DB used by dagster for run storage, schedule storage,
+  # and event log storage.
+ #  set postgres volumes to persist data
+  dagster_postgres:
+    image: postgres:11
+    container_name: dagster_postgres
+    environment:
+      POSTGRES_USER: "postgres_user"
+      POSTGRES_PASSWORD: "postgres_password"
+      POSTGRES_DB: "postgres_db"
+    volumes:
+      - /tmp/postgres:/var/lib/postgresql/data
+      - /tmp/io_manager_storage:/tmp/io_manager_storage
+      - ./postgres-data:/var/lib/postgresql/data
+    networks:
+      - dagster_network
+
+      # This service runs the gRPC server that loads your user code, in both dagster-webserver
+      # and dagster-daemon. By setting DAGSTER_CURRENT_IMAGE to its own image, we tell the
+      # run launcher to use this same image when launching runs in a new container as well.
+      # Multiple containers like this can be deployed separately - each just needs to run on
+      # its own port, and have its own entry in the workspace.yaml file that's loaded by the
+      # webserver.
+  dagster_mlb_dags:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+      target: dags
+    container_name: dagster_mlb_dags
+    image: dagster_mlb_dags
+    restart: no
+    environment:
+      DAGSTER_POSTGRES_USER: "postgres_user"
+      DAGSTER_POSTGRES_PASSWORD: "postgres_password"
+      DAGSTER_POSTGRES_DB: "postgres_db"
+      DAGSTER_CURRENT_IMAGE: "dagster_mlb_dags"
+      GOOGLE_APPLICATION_CREDENTIALS: "fantasy-baseball-373302-db0bc088066c.json"
+      CLOUDFLARE_BUCKET: "mlb-stats"
+      CLOUDFLARE_ACCOUNT_ID: "7005c7c8ca5195eb63e5739a2e0e6050"
+      CLOUDFLARE_CLIENT_ACCESS_KEY: "1bbe788d383f7b7d1789ffa3b09b016a"
+      CLOUDFLARE_CLIENT_SECRET: "c032f0473df296fabdfd9b41b4209c43cf086173c69bfc06a69cf4454f852a78"
+      CLOUDFLARE_TOKEN_VALUE: "tJ3BvzNBziIvey16JVnh2zmRzQ0XyHUO-22A0Yam"
+      DUCKDB_DATABASE: "fantasy-baseball.duckdb"
+    networks:
+      - dagster_network
+
+  # This service runs dagster-webserver, which loads your user code from the user code container.
+  # Since our instance uses the QueuedRunCoordinator, any runs submitted from the webserver will be put on
+  # a queue and later dequeued and launched by dagster-daemon.
+  dagster_webserver:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+      target: dagster_web
+    entrypoint:
+      - dagster-webserver
+      - -h
+      - "0.0.0.0"
+      - -p
+      - "3000"
+      - -w
+      - workspace.yaml
+    container_name: dagster_webserver
+    expose:
+      - "3000"
+    ports:
+      - "3000:3000"
+    environment:
+      DAGSTER_POSTGRES_USER: "postgres_user"
+      DAGSTER_POSTGRES_PASSWORD: "postgres_password"
+      DAGSTER_POSTGRES_DB: "postgres_db"
+      CLOUDFLARE_BUCKET: "mlb-stats"
+      CLOUDFLARE_ACCOUNT_ID: "7005c7c8ca5195eb63e5739a2e0e6050"
+      CLOUDFLARE_CLIENT_ACCESS_KEY: "1bbe788d383f7b7d1789ffa3b09b016a"
+      CLOUDFLARE_CLIENT_SECRET: "c032f0473df296fabdfd9b41b4209c43cf086173c69bfc06a69cf4454f852a78"
+      CLOUDFLARE_TOKEN_VALUE: "tJ3BvzNBziIvey16JVnh2zmRzQ0XyHUO-22A0Yam"
+      DUCKDB_DATABASE: "fantasy-baseball.duckdb"
+    volumes: # Make docker client accessible so we can terminate containers from the webserver
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /tmp/io_manager_storage:/tmp/io_manager_storage
+    networks:
+      - dagster_network
+    depends_on:
+      - dagster_postgres
+      - dagster_mlb_dags
+
+  # This service runs the dagster-daemon process, which is responsible for taking runs
+  # off of the queue and launching them, as well as creating runs from schedules or sensors.
+  dagster_daemon:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+      target: dagster_web
+    entrypoint:
+      - dagster-daemon
+      - run
+    container_name: dagster_daemon
+    restart: on-failure
+    environment:
+      DAGSTER_POSTGRES_USER: "postgres_user"
+      DAGSTER_POSTGRES_PASSWORD: "postgres_password"
+      DAGSTER_POSTGRES_DB: "postgres_db"
+      CLOUDFLARE_BUCKET: "mlb-stats"
+      CLOUDFLARE_ACCOUNT_ID: "7005c7c8ca5195eb63e5739a2e0e6050"
+      CLOUDFLARE_CLIENT_ACCESS_KEY: "1bbe788d383f7b7d1789ffa3b09b016a"
+      CLOUDFLARE_CLIENT_SECRET: "c032f0473df296fabdfd9b41b4209c43cf086173c69bfc06a69cf4454f852a78"
+      CLOUDFLARE_TOKEN_VALUE: "tJ3BvzNBziIvey16JVnh2zmRzQ0XyHUO-22A0Yam"
+      DUCKDB_DATABASE: "fantasy-baseball.duckdb"
+    volumes: # Make docker client accessible so we can launch containers using host docker
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /tmp/io_manager_storage:/tmp/io_manager_storage
+    networks:
+      - dagster_network
+    depends_on:
+      - dagster_postgres
+      - dagster_mlb_dags
+
+networks:
+  dagster_network:
+    driver: bridge
+    name: dagster_network
