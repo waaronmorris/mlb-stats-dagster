@@ -6,11 +6,15 @@ run_coordinator:
   module: dagster.core.run_coordinator
   class: QueuedRunCoordinator
   config:
-    max_concurrent_runs: 25
+    max_concurrent_runs: 20
     dequeue_use_threads: true
     dequeue_num_workers: 8
     dequeue_interval_seconds: 30
-
+    tag_concurrency_limits:
+      - key: "dagster/backfill"
+        limit: 20
+      - key: "website"
+        limit: 5
 
 run_launcher:
   module: dagster_docker
@@ -73,4 +77,9 @@ event_log_storage:
       db_name:
         env: DAGSTER_POSTGRES_DB
       port: 5432
+
+run_monitoring:
+  enabled: true
+  start_timeout_seconds: 3600
+  cancel_timeout_seconds: 300
 
