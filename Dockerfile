@@ -2,12 +2,13 @@
 
 FROM python:3.10-slim as base
 
-RUN apt-get update && apt-get install -y gcc
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
+RUN apt-get update && apt-get install -y gcc
 # Set the working directory in the container
 WORKDIR /app
 
-COPY . /app
+COPY pyproject.toml poetry.lock /app/
 
 # Install the dependencies
 RUN pip install poetry
@@ -19,7 +20,11 @@ RUN poetry install --no-interaction
 
 RUN poetry run pip freeze > requirements.txt
 
-FROM base as dags
+FROM python:3.10-slim as dags
+
+WORKDIR /app
+
+COPY . /app
 
 WORKDIR /opt/dagster/app
 
@@ -35,6 +40,10 @@ RUN pip install -r requirements.txt
 
 COPY mlb_stats /opt/dagster/app/mlb_stats
 COPY mlb_stats_dbt /opt/dagster/app/mlb_stats_dbt
+COPY env /opt/dagster/app/env
+
+# Set environment to production by default
+ENV ENV=production
 
 EXPOSE 4000
 
@@ -58,10 +67,12 @@ RUN pip install \
     dagster-docker
 
 ENV DAGSTER_HOME=/opt/dagster/app
+ENV ENV=production
 
 RUN mkdir -p $DAGSTER_HOME
 
 COPY config/dagster.yaml $DAGSTER_HOME/dagster.yaml
 COPY config/workspace.yaml $DAGSTER_HOME/workspace.yaml
+COPY env /opt/dagster/app/env
 
 WORKDIR $DAGSTER_HOME

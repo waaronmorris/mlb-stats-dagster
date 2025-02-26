@@ -5,6 +5,7 @@ services:
   dagster_postgres:
     image: postgres:11
     container_name: dagster_postgres
+    restart: always
     environment:
       POSTGRES_USER: "postgres_user"
       POSTGRES_PASSWORD: "postgres_password"
@@ -29,7 +30,7 @@ services:
       target: dags
     container_name: dagster_mlb_dags
     image: dagster_mlb_dags
-    restart: no
+    restart: always
     environment:
       DAGSTER_POSTGRES_USER: "postgres_user"
       DAGSTER_POSTGRES_PASSWORD: "postgres_password"
@@ -49,6 +50,7 @@ services:
   # Since our instance uses the QueuedRunCoordinator, any runs submitted from the webserver will be put on
   # a queue and later dequeued and launched by dagster-daemon.
   dagster_webserver:
+    restart: always
     build:
       context: .
       dockerfile: ./Dockerfile
@@ -96,7 +98,7 @@ services:
       - dagster-daemon
       - run
     container_name: dagster_daemon
-    restart: on-failure
+    restart: always
     environment:
       DAGSTER_POSTGRES_USER: "postgres_user"
       DAGSTER_POSTGRES_PASSWORD: "postgres_password"

@@ -1,0 +1,8 @@
+mlb_stats_tests
+postgres-data+1
+.gitignore
+*.env
+*.duckdb
+*.json
+Makefile
+README.md

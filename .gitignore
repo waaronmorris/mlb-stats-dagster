@@ -176,8 +176,58 @@ logs/
 target
 logs
 dbt_packages
-postgres-data
+postgres-data+1
 *.db
 *.ddb
 *.duckdb
 
+/postgres-data
+
+# Data files
+*.parquet
+*.csv
+*.tsv
+*.xlsx
+*.xls
+*.h5
+*.hdf5
+*.feather
+*.arrow
+*.avro
+*.orc
+*.sav
+*.pkl
+*.pickle
+*.npy
+*.npz
+*.rds
+*.fst
+*.sas7bdat
+*.mat
+
+# Large binary files
+*.zip
+*.tar
+*.gz
+*.bz2
+*.xz
+*.7z
+*.rar
+
+# Database files
+*.duckdb
+*.db
+*.sqlite
+*.sqlite3
+/postgres-data
+
+# Environment files
+.env
+env/.env
+**/.env
+env/.env.production
+**/.env.production
+
+# Keep env schema and defaults
+!env/.env.schema
+!env/.env.default
