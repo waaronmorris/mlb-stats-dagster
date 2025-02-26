@@ -1,78 +1,272 @@
+# MLB Stats Dagster Project
+
 <div align="center">
-  <a target="_blank" href="https://dagster.io" style="background:none">
-    <img alt="dagster logo" src="https://github.com/dagster-io/dagster-quickstart/assets/5807118/7010804c-05a6-4ef4-bfc8-d9c88d458906" width="auto" height="120px">
+  <a target="_blank" href="https://dagster.io">
+    <img alt="dagster logo" src="https://github.com/dagster-io/dagster/raw/master/docs/next/public/assets/logos/dagster.png" width="auto" height="120px">
   </a>
 </div>
 
-# Dagster Quickstart
+A comprehensive data pipeline project that processes MLB statistics and Ottoneu fantasy baseball data using Dagster.
 
-Get up-and-running with the Dagster quickstart project -- open the project in a GitHub Codespace and start building data pipelines with no local installation required.
+## Data Flow Architecture
 
-For more information on how to use this project, please reference the [Dagster Quickstart guide](https://docs.dagster.io/getting-started/quickstart).
+### High-Level System Architecture
+```mermaid
+flowchart TB
+    subgraph External Sources
+        MLB[MLB Stats API]
+        OTT[Ottoneu API]
+    end
 
-## Running The Project
+    subgraph Storage & Processing
+        subgraph "Data Lake"
+            R2[Cloudflare R2]
+        end
+        
+        subgraph "Data Processing"
+            DUCK[DuckDB]
+            DBT[DBT Transformations]
+        end
+    end
 
-### Option 1. Using GitHub Codespaces
+    subgraph "Dagster Infrastructure"
+        PG[PostgreSQL<br/>Dagster Metadata]
+        DAG[Dagster Orchestration]
+    end
 
-1. Fork this repository
+    MLB --> R2
+    OTT --> R2
+    R2 --> DUCK
+    DUCK --> DBT
+    DBT --> R2
+    
+    DAG --> PG
+    DAG --> MLB
+    DAG --> OTT
+```
 
-2. From the **Code** dropdown, select **Create codespace on main**
+### Asset Lineage
+```mermaid
+flowchart LR
+    subgraph "Raw Data (R2)"
+        direction TB
+        BS[Box Scores]
+        SCH[Schedules]
+        TRANS[Transactions]
+        ROST[Rosters]
+    end
 
-<img width="300" alt="Create codespace" src="https://github.com/dagster-io/dagster-quickstart/assets/5807118/954493f0-99ac-4aa9-884b-3b2800d2a0d8">
+    subgraph "Stage (DuckDB)"
+        direction TB
+        PL_BS[Player Box Scores]
+        GM_SCH[Game Schedules]
+        TM_TRANS[Team Transactions]
+        PL_ROST[Player Rosters]
+    end
 
-3. Once the codespace has loaded, run `dagster dev` in the terminal to start Dagster:
+    subgraph "Refined (R2)"
+        direction TB
+        STATS[Player Statistics]
+        TEAMS[Team Analytics]
+        PERF[Performance Metrics]
+    end
 
-    ```bash
-    dagster dev
-    ```
+    BS --> PL_BS
+    SCH --> GM_SCH
+    TRANS --> TM_TRANS
+    ROST --> PL_ROST
 
-4. When prompted, click **Open in Browser**.
+    PL_BS --> STATS
+    GM_SCH --> STATS
+    TM_TRANS --> TEAMS
+    PL_ROST --> TEAMS
 
-<img width="400" alt="Codespace Open In Browser" src="https://github.com/dagster-io/dagster-quickstart/assets/5807118/2d598c56-2bf5-4ffb-927f-5d2e4a5e6967">
+    STATS --> PERF
+    TEAMS --> PERF
+```
 
-> [!TIP]  
-> If the popup to open Dagster is not visible, you can navigate to the **Forwarded Ports** tab, and open the **Forwarded Address** for port 3000.
+### Data Processing Flow
+```mermaid
+sequenceDiagram
+    participant MLB as MLB Stats API
+    participant OTT as Ottoneu API
+    participant DAG as Dagster
+    participant PG as PostgreSQL<br/>(Metadata)
+    participant R2 as Cloudflare R2
+    participant DUCK as DuckDB
+    participant DBT as DBT
 
-5. **Success!** You'll be presented with the lineage of assets in the quickstart project.
+    Note over DAG,PG: Stores job metadata<br/>and orchestration state
+    
+    DAG->>MLB: Fetch game data
+    MLB-->>DAG: Raw game data
+    DAG->>OTT: Fetch fantasy data
+    OTT-->>DAG: Raw fantasy data
+    DAG->>R2: Store raw data
+    
+    DAG->>DUCK: Load data for processing
+    DUCK->>R2: Read raw data
+    DUCK->>DBT: Process with DBT
+    DBT->>DUCK: Transform data
+    DUCK->>R2: Store processed data
+    
+    DAG->>PG: Update job status
+```
 
-![image](https://github.com/dagster-io/dagster-quickstart/assets/5807118/fe5dcf40-a086-42a3-974c-42c252e3a705)
+## Features
 
-### Option 2. Running Locally
+- MLB Statistics Processing
+  - Fetches data from MLB Stats API
+  - Processes box scores and game schedules
+  - Historical and real-time data processing
+- Ottoneu Fantasy Baseball Integration
+  - League transaction tracking
+  - Player roster analysis
+  - Team performance metrics
+- Data Storage & Processing
+  - Cloudflare R2 for data lake storage (raw and processed data)
+  - DuckDB for efficient data processing and transformations
+  - PostgreSQL for Dagster metadata and job orchestration
+- DBT Integration
+  - Modular data transformations
+  - Incremental processing
+  - Data quality tests
 
-1. Clone the Dagster Quickstart repository:
+## Project Structure
 
-    ```sh
-    git clone https://github.com/dagster-io/dagster-quickstart
+```
+mlb_stats-dagster/
+├── mlb_stats/              # Main Python package
+│   ├── assets/            # Dagster assets definitions
+│   ├── jobs/             # Dagster job definitions
+│   ├── resources/        # Custom resource implementations
+│   ├── sensors/          # Event sensors
+│   └── io/              # I/O management
+├── mlb_stats_dbt/         # DBT transformations
+├── env/                   # Environment configuration
+│   ├── .env.schema       # Environment variable documentation
+│   ├── .env.default      # Default development values
+│   └── .env.production   # Production configuration (not in VCS)
+├── config/               # Dagster configuration
+└── tests/               # Test suite
+```
 
-    cd mlb_stats-dagster
-    ```
+## Prerequisites
 
-2. Install the required dependencies.
+- Python 3.10+
+- Docker and Docker Compose
+- MLB Stats API access (if required)
+- Ottoneu API credentials
+- Cloudflare R2 account (for data lake)
 
-    Here we are using `-e`, for ["editable mode"](https://pip.pypa.io/en/latest/topics/local-project-installs/#editable-installs), so that when Dagster code is modified, the changes automatically apply. 
+## Installation
 
-    ```sh
-    pip install -e ".[dev]"
-    ```
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/mlb-stats-dagster.git
+   cd mlb-stats-dagster
+   ```
 
-3. Run the project!
+2. Set up the environment:
+   ```bash
+   # Install dependencies
+   pip install poetry
+   poetry install
 
-    ```sh
-    dagster dev
-    ```
+   # Set up environment configuration
+   cp env/.env.default env/.env
+   ```
 
-## Development
+3. Configure your environment variables in `env/.env`
 
-### Adding new Python dependencies
+## Development Setup
 
-You can specify new Python dependencies in `setup.py`.
+### Local Development
 
-### Unit testing
+1. Start the development environment:
+   ```bash
+   ENV=development dagster dev
+   ```
 
-Tests are in the `dagster_quickstart_tests` directory and you can run tests using `pytest`.
+2. Access the Dagster UI at http://localhost:3000
 
-## Deploy on Dagster Cloud
+### Docker Development
 
-The easiest way to deploy your Dagster project is to use Dagster Cloud.
+1. Build and start the containers:
+   ```bash
+   docker-compose up --build
+   ```
 
-Check out the [Dagster Cloud Documentation](https://docs.dagster.cloud) to learn more.
+2. Access the Dagster UI at http://localhost:3000
+
+## Environment Configuration
+
+The project uses a flexible environment configuration system:
+
+- `ENV=development` → Uses `.env.default`
+- `ENV=production` → Uses `.env.production`
+- `ENV=staging` → Uses `.env.staging`
+
+See [Environment Configuration](env/README.md) for detailed setup instructions.
+
+## Running Jobs
+
+### CLI
+
+```bash
+# Run a specific job
+dagster job execute -f mlb_stats/jobs/mlb_api.py
+
+# Materialize assets
+dagster asset materialize --select "*"
+```
+
+### Scheduling
+
+Jobs can be scheduled through the Dagster UI or configured in `mlb_stats/schedules.py`.
+
+## Testing
+
+```bash
+# Run all tests
+pytest
+
+# Run specific test file
+pytest mlb_stats_tests/test_assets.py
+```
+
+## Deployment
+
+### Docker Production Deployment
+
+1. Build the production image:
+   ```bash
+   docker build -t mlb-stats-dagster .
+   ```
+
+2. Run with production configuration:
+   ```bash
+   docker run -e ENV=production -p 3000:3000 mlb-stats-dagster
+   ```
+
+### Dagster Cloud Deployment
+
+This project is compatible with Dagster Cloud. See the [Dagster Cloud Documentation](https://docs.dagster.cloud) for deployment instructions.
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Acknowledgments
+
+- [Dagster](https://dagster.io/) for the data orchestration framework
+- [MLB Stats API](https://statsapi.mlb.com/) for baseball statistics
+- [Ottoneu Fantasy Baseball](https://ottoneu.fangraphs.com/) for fantasy baseball data
