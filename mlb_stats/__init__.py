@@ -1,3 +1,12 @@
+"""MLB Stats Dagster Project"""
+
+from mlb_stats.config import load_environment, config
+
+# Load environment variables when the package is imported
+load_environment()
+
+__all__ = ["config"]
+
 import warnings
 
 import dagster as dg
@@ -7,13 +16,15 @@ warnings.filterwarnings("ignore", category=dg.ExperimentalWarning)
 
 from dagster_dbt import DbtCliResource
 
-from . import assets, io, jobs, resources, project, schedules
+# from . import assets, io, jobs, resources, project, schedules
 
 import mlb_stats.project as project
 import mlb_stats.assets as assets
 import mlb_stats.resources as resources
 import mlb_stats.jobs as jobs
 import mlb_stats.schedules as schedules
+import mlb_stats.sensors as sensors
+import  mlb_stats.io as io
 
 from langchain_anthropic import ChatAnthropic
 
@@ -35,9 +46,7 @@ defs = dg.Definitions(
     assets=assets.all_assets,
     jobs=jobs.jobs(),
     schedules=schedules.generate_schedules(),
-    # sensors=[
-    #     sensors.box_scores_sensor
-    # ],
+    sensors=sensors.sensors,
     resources={
         'fantasy_loader': resources.FantasyLoader(
             base_url="https://fantasy-baseball-loader-5yibsupwla-uc.a.run.app/"
@@ -55,12 +64,6 @@ defs = dg.Definitions(
             client_secret=dg.EnvVar("CLOUDFLARE_CLIENT_SECRET").get_value(),
             duckdb=create_ddb()
         ),
-        "dbt": DbtCliResource(project_dir=project.mlb_stats_dbt_project),
-        "column_renamer": resources.ColumnRenamer(
-            llm_model=ChatAnthropic(
-                temperature=0,
-                api_key=dg.EnvVar('ANTHROPIC_API_KEY').get_value(),
-                model_name="claude-3-haiku-20240307")
-        ),
+        "dbt": DbtCliResource(project_dir=project.mlb_stats_dbt_project)
     }
 )

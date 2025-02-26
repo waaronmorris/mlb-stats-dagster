@@ -1,0 +1,19 @@
+version: 2
+
+models:
+  - name: mlb_box_score
+    description: 'Ottoneu League Transactions'
+    meta:
+      dagster:
+        asset_key: [ "dbt", "mlb", "stage", "box_score" ]
+        group: "ottoneu_league"
+        tags:
+          website: "mlb.com"
+  - name: mlb_schedule
+    description: 'MLB Schedule'
+    meta:
+      dagster:
+        asset_key: ["dbt", "mlb", "stage", "schedule"]
+        group: "mlb_stats"
+        tags:
+          website: "mlb.com"

@@ -1,0 +1,35 @@
+version: 2
+
+models:
+  - name: ottoneu_league_transactions
+    description: 'Ottoneu League Transactions'
+    meta:
+      dagster:
+        asset_key: [ "dbt", "ottoneu", "stage", "league_transactions" ]
+        group: "ottoneu_league"
+        tags:
+          website: "ottoneu.fangraphs"
+  - name: ottoneu_player_list
+    description: 'List of MLB players available in the Ottoneu universe'
+    meta:
+      dagster:
+        asset_key: ["dbt", "mlb", "stage", "player_list"]
+        group: "mlb_stats"
+        tags:
+          website: "mlb.com"
+  - name: ottoneu_team_map
+    description: 'Mapping of Team IDs to Team Names'
+    meta:
+      dagster:
+        asset_key: [ "dbt", "ottoneu", "stage","team_player_map" ]
+        group: "ottoneu_league"
+        tags:
+          website: "ottoneu.fangraphs"
+  - name: ottoneu_transaction_math
+    description: 'Transaction Math for Ottoneu'
+    meta:
+      dagster:
+        asset_key: [ "dbt", "ottoneu", "stage", "transaction_math" ]
+        group: "ottoneu_league"
+        tags:
+          website: "ottoneu.fangraphs"

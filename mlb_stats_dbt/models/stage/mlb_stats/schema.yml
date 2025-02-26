@@ -1,0 +1,13 @@
+
+version: 2
+
+models:
+  - name: mlb_player_box_scores
+    description: 'Box scores for MLB games'
+    meta:
+      dagster:
+        asset_key: ["dbt", "mlb", "stage","box_scores"]
+        group: "mlb_stats"
+        tags:
+          website: "mlb.com"
+

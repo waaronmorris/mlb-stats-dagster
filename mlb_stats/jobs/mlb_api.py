@@ -9,3 +9,8 @@ box_score_job = dg.define_asset_job(
     name="box_scores",
     selection=dg.AssetSelection.groups('stg_mlb_box_score')
 )
+
+schedule_score_job = dg.define_asset_job(
+    name="schedule_scores",
+    selection=dg.AssetSelection.groups('stg_mlb_schedule')
+)

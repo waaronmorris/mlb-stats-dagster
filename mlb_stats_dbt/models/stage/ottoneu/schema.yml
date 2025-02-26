@@ -1,0 +1,19 @@
+version: 2
+
+models:
+  - name: ottoneu_player_roster_over_time
+    description: 'MLB Players with the assigned Fantasy Team over time'
+    meta:
+      dagster:
+        asset_key: ["dbt", "mlb", "stage", "player_roster_over_time"]
+        group: "mlb_stats"
+        tags:
+          website: "mlb.com"
+  - name: ottoneu_roster_journey
+    description: 'A players journey through teams in Ottoneu'
+    meta:
+      dagster:
+        asset_key: [ "dbt", "ottoneu", "stage", "player_team_journey" ]
+        group: "ottoneu_league"
+        tags:
+          website: "ottoneu.fangraphs"

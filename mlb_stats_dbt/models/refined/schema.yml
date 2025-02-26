@@ -1,0 +1,12 @@
+
+version: 2
+
+models:
+  - name: box_scores
+    description: 'Box scores for MLB games including Fantasy Information'
+    meta:
+      dagster:
+        asset_key: ["dbt", "mlb", "refined", "box_scores"]
+        group: "refined_mlb_stats"
+        tags:
+          website: "mlb.com"

@@ -15,3 +15,5 @@ class ScheduleLoaderConfig(Config):
         is_required=True,
         default= dt.datetime.now().strftime('%Y%m%d')
     )
+
+

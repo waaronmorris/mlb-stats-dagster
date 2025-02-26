@@ -1,15 +1,16 @@
 import re
-from datetime import datetime
+import datetime as dt
 
 import dagster as dg
 import pandas as pd
 from plyball.ottoneu import Ottoneu
-from mlb_stats.partitions import OTTONEU_PARTITIONED_CONFIG
+
+from mlb_stats.partitions import OTTONEU_LEAGUE_PARTITIONED_CONFIG
 
 
 @dg.asset(
     compute_kind='python',
-    key_prefix=['raw'],
+    key_prefix=['raw', 'ottoneu'],
     name="ottoneu_player_universe",
     description="Player Universe for Ottoneu",
     group_name="raw_ottoneu",
@@ -17,16 +18,18 @@ from mlb_stats.partitions import OTTONEU_PARTITIONED_CONFIG
     tags={
         "source": "dropbox_csv",
         "data-tier": "raw",
+        'dagster/max_runtime': '3600',
     },
 )
 def ottoneu_player_universe(context) -> dg.Output:
+    __start_process_time = dt.datetime.now()
     url = 'https://www.dropbox.com/s/l3hegihwb0dt6xq/player_universe.csv?dl=1'
     rv_df = pd.read_csv(url, dtype=str)
 
     rv_df.columns = [re.sub("^[0-9]", "_" + column[0], column, count=0, flags=0) for column in rv_df.columns]
     rv_df.columns = [re.sub(r"\W+", "_", column) for column in rv_df.columns]
     rv_df.columns = [c.lower().replace(" ", "_") for c in rv_df.columns]
-    rv_df['load_time'] = datetime.utcnow()
+    rv_df['load_time'] = dt.datetime.utcnow()
 
     summary = rv_df.describe()
 
@@ -38,6 +41,8 @@ def ottoneu_player_universe(context) -> dg.Output:
             "columns": len(rv_df.columns),
             "player_count": rv_df['ottoneu_id'].nunique(),
             "columns_names": list(rv_df.columns),
+            "load_time": (dt.datetime.now() - __start_process_time).total_seconds()
+
         },
         tags={
             "source": "dropbox_csv",
@@ -48,11 +53,10 @@ def ottoneu_player_universe(context) -> dg.Output:
 
 @dg.multi_asset(
     compute_kind='python',
-    partitions_def=OTTONEU_PARTITIONED_CONFIG,
     group_name="raw_ottoneu",
     outs={
         'player_info': dg.AssetOut(
-            key=['raw', 'ottoneu_player_info'],
+            key=['raw', 'ottoneu', 'ottoneu_player_info'],
             description="Player Info for Ottoneu",
             io_manager_key="duckdb_io_manager",
             tags={
@@ -62,7 +66,7 @@ def ottoneu_player_universe(context) -> dg.Output:
             is_required=True,
         ),
         'player_stats': dg.AssetOut(
-            key=['raw', 'ottoneu_player_stats'],
+            key=['raw', 'ottoneu', 'ottoneu_player_stats'],
             description="Player Stats for Ottoneu",
             io_manager_key="duckdb_io_manager",
             tags={
@@ -72,7 +76,7 @@ def ottoneu_player_universe(context) -> dg.Output:
             is_required=True,
         ),
         'batter_info': dg.AssetOut(
-            key=['raw', 'ottoneu_batter_info'],
+            key=['raw', 'ottoneu', 'ottoneu_batter_info'],
             description="Batter Info for Ottoneu",
             io_manager_key="duckdb_io_manager",
             tags={
@@ -82,7 +86,7 @@ def ottoneu_player_universe(context) -> dg.Output:
             is_required=True,
         ),
         'batter_stats': dg.AssetOut(
-            key=['raw', 'ottoneu_batter_stats'],
+            key=['raw', 'ottoneu', 'ottoneu_batter_stats'],
             description="Batter Stats for Ottoneu",
             io_manager_key="duckdb_io_manager",
             tags={
@@ -92,7 +96,7 @@ def ottoneu_player_universe(context) -> dg.Output:
             is_required=True,
         ),
         'pitcher_info': dg.AssetOut(
-            key=['raw', 'ottoneu_pitcher_info'],
+            key=['raw', 'ottoneu', 'ottoneu_pitcher_info'],
             description="Pitcher Info for Ottoneu",
             io_manager_key="duckdb_io_manager",
             tags={
@@ -102,7 +106,7 @@ def ottoneu_player_universe(context) -> dg.Output:
             is_required=True,
         ),
         'pitcher_stats': dg.AssetOut(
-            key=['raw', 'ottoneu_pitcher_stats'],
+            key=['raw', 'ottoneu', 'ottoneu_pitcher_stats'],
             description="Pitcher Stats for Ottoneu",
             io_manager_key="duckdb_io_manager",
             tags={
@@ -114,6 +118,7 @@ def ottoneu_player_universe(context) -> dg.Output:
     }
 )
 def ottoneu_players_search(context):
+    __start_process_time = dt.datetime.now()
     ottoneu = Ottoneu(186)
     players = ottoneu.players()
     yield dg.Output(
@@ -124,11 +129,13 @@ def ottoneu_players_search(context):
             "columns": len(players['info'].columns),
             "player_count": players['info']['PlayerID'].nunique(),
             "columns_names": list(players['info'].columns),
-            "sample": dg.MetadataValue.md(players['info'].head().to_markdown())
+            "sample": dg.MetadataValue.md(players['info'].head().to_markdown()),
+            "load_time": (dt.datetime.now() - __start_process_time).total_seconds()
         },
         tags={
             "source": "ottoneu-scaper",
             "data-tier": "raw",
+            'dagster/max_runtime': '3600',
         }
     )
 
@@ -140,7 +147,8 @@ def ottoneu_players_search(context):
             "columns": len(players['stat'].columns),
             "player_count": players['stat']['PlayerID'].nunique(),
             "columns_names": list(players['stat'].columns),
-            "sample": dg.MetadataValue.md(players['stat'].head().to_markdown())
+            "sample": dg.MetadataValue.md(players['stat'].head().to_markdown()),
+            "load_time": (dt.datetime.now() - __start_process_time).total_seconds()
         },
         tags={
             "source": "ottoneu-scaper",
@@ -156,7 +164,8 @@ def ottoneu_players_search(context):
             "columns": len(players['batter']['info'].columns),
             "player_count": players['batter']['info']['PlayerID'].nunique(),
             "columns_names": list(players['batter']['info'].columns),
-            "sample": dg.MetadataValue.md(players['batter']['info'].head().to_markdown())
+            "sample": dg.MetadataValue.md(players['batter']['info'].head().to_markdown()),
+            "load_time": (dt.datetime.now() - __start_process_time).total_seconds()
         },
         tags={
             "source": "ottoneu-scaper",
@@ -172,7 +181,8 @@ def ottoneu_players_search(context):
             "columns": len(players['batter']['stat'].columns),
             "player_count": players['batter']['stat']['PlayerID'].nunique(),
             "columns_names": list(players['batter']['stat'].columns),
-            "sample": dg.MetadataValue.md(players['batter']['stat'].head().to_markdown())
+            "sample": dg.MetadataValue.md(players['batter']['stat'].head().to_markdown()),
+            "load_time": (dt.datetime.now() - __start_process_time).total_seconds()
         },
         tags={
             "source": "ottoneu-scaper",
@@ -188,11 +198,13 @@ def ottoneu_players_search(context):
             "columns": len(players['pitcher']['info'].columns),
             "player_count": players['pitcher']['info']['PlayerID'].nunique(),
             "columns_names": list(players['pitcher']['info'].columns),
-            "sample": dg.MetadataValue.md(players['pitcher']['info'].head().to_markdown())
+            "sample": dg.MetadataValue.md(players['pitcher']['info'].head().to_markdown()),
+            "load_time": (dt.datetime.now() - __start_process_time).total_seconds()
         },
         tags={
             "source": "ottoneu-scaper",
             "data-tier": "raw",
+            'dagster/max_runtime': '3600',
         }
     )
 
@@ -204,7 +216,8 @@ def ottoneu_players_search(context):
             "columns": len(players['pitcher']['stat'].columns),
             "player_count": players['pitcher']['stat']['PlayerID'].nunique(),
             "columns_names": list(players['pitcher']['stat'].columns),
-            "sample": dg.MetadataValue.md(players['pitcher']['stat'].head().to_markdown())
+            "sample": dg.MetadataValue.md(players['pitcher']['stat'].head().to_markdown()),
+            "load_time": (dt.datetime.now() - __start_process_time).total_seconds()
         },
         tags={
             "source": "ottoneu-scaper",
@@ -215,7 +228,7 @@ def ottoneu_players_search(context):
 
 @dg.asset(
     compute_kind='python',
-    key_prefix=['stage'],
+    key_prefix=['stage','ottoneu'],
     name="ottoneu_player_information",
     description="Team Universe for Ottoneu",
     group_name="stg_ottoneu",
@@ -223,17 +236,13 @@ def ottoneu_players_search(context):
     tags={
         "source": "dropbox_csv",
         "data-tier": "raw",
+        'dagster/max_runtime': '3600',
     },
     ins={
         'ottoneu_player_info': dg.AssetIn(
-            key=['raw', 'ottoneu_player_info'],
-            partition_mapping=dg.TimeWindowPartitionMapping(
-                start_offset=-1,
-                end_offset=0,
-                allow_nonexistent_upstream_partitions=True
-            )),
+            key=['raw', 'ottoneu', 'ottoneu_player_info']),
         'ottoneu_player_universe': dg.AssetIn(
-            key=['raw', 'ottoneu_player_universe']
+            key=['raw', 'ottoneu', 'ottoneu_player_universe']
         )
     }
 )
@@ -241,6 +250,7 @@ def ottoneu_player_information(context,
                                ottoneu_player_info: pd.DataFrame,
                                ottoneu_player_universe: pd.DataFrame,
                                ) -> dg.Output:
+    __start_process_time = dt.datetime.now()
     if ottoneu_player_info is None:
         return dg.Output(value=None)
 
@@ -294,8 +304,67 @@ def ottoneu_player_information(context,
             "summary": dg.MetadataValue.md(rv_df.describe().to_markdown()),
             "rows": len(rv_df),
             "columns": len(rv_df.columns),
-            "player_count": rv_df['PlayerID'].nunique(),
+            "player_count": rv_df['ottoneu_id'].nunique(),
             "columns_names": list(rv_df.columns),
+            "load_time": (dt.datetime.now() - __start_process_time).total_seconds()
+        },
+        tags={
+            "data-tier": "staging",
+        }
+    )
+
+
+@dg.asset(
+    compute_kind='python',
+    key_prefix=['raw', 'ottoneu'],
+    name="league_transactions",
+    description="Player Transactions for Ottoneu League",
+    group_name="stg_ottoneu",
+    io_manager_key="duckdb_io_manager",
+    # partitions_def=OTTONEU_LEAGUE_PARTITIONED_CONFIG,
+    tags={
+        "source": "dropbox_csv",
+        "data-tier": "raw",
+        'dagster/max_runtime': '3600',
+    }
+)
+def league_transactions(context) -> dg.Output:
+    """
+    Get the transactions for the Ottoneu league
+
+    :param context:
+    :return:
+    """
+    __start_process_time = dt.datetime.now()
+    ottoneu = Ottoneu(186)
+
+    # start_date = dt.datetime.strptime(context.partition_key, '%Y-%m-%d')
+
+    transactions: pd.DataFrame = ottoneu.league_transactions()
+
+    column_mapper = {
+        "Date": 'date',
+        "Transaction Type": 'transaction_type',
+        "Player Name": 'player_name',
+        "Team Name": 'team_name',
+        "From Team": 'from_team',
+        "Salary": 'salary',
+        "team_id": 'team_id',
+        "player_id": 'player_id',
+        "trade_id": 'trade_id'
+    }
+
+    transactions = transactions.rename(columns=column_mapper)
+    return dg.Output(
+        value=transactions,
+        metadata={
+            "summary": dg.MetadataValue.md(transactions.describe().to_markdown()),
+            "row_count": len(transactions),
+            "column_count": len(transactions.columns),
+            "columns": transactions.columns.to_list(),
+            "player_count": transactions['player_id'].nunique(),
+            "sample": dg.MetadataValue.md(transactions.head().to_markdown()),
+            "load_time": (dt.datetime.now() - __start_process_time).total_seconds()
         },
         tags={
             "data-tier": "staging",

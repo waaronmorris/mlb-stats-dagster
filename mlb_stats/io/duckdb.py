@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import dagster as dg
 import pandas as pd
 import pyarrow as pa
@@ -25,7 +27,9 @@ class DuckPondIOManager(dg.IOManager):
         return pafs.S3FileSystem(
             access_key=self.client_access_key,
             secret_key=self.client_secret,
-            endpoint_override=_connection_url
+            endpoint_override=_connection_url,
+            request_timeout=3600,
+            connect_timeout=3600
         )
 
     def _get_r2_url(self, context):
@@ -54,9 +58,15 @@ class DuckPondIOManager(dg.IOManager):
         if not isinstance(obj, pd.DataFrame):
             return
 
+        # Convert 'Timestamp' columns to ISO 8601 string format
+        obj = obj.copy()  # Make a copy to avoid modifying the original dataframe
+        for column in obj.select_dtypes(include=['datetime64[ns]', 'datetime64']).columns:
+            obj[column] = obj[column].map(lambda x: x.isoformat())
+
         file_path = self.__get_path(context)
 
         r2 = self._connection
+
         table = pa.Table.from_pandas(
             df=obj,
             preserve_index=False
@@ -70,24 +80,72 @@ class DuckPondIOManager(dg.IOManager):
 
     def load_input(self, context: dg.InputContext):
         df = pd.DataFrame()
-        asset_partitions_def = context.asset_partitions_def
-        if len(context.asset_partition_keys) > 1:
-            for partition_key in context.asset_partition_keys:
-                file_path = '/'.join([self.bucket_name, *context.asset_key.path, partition_key.replace('-', '')])
-                try:
-                    df = pd.concat([
-                        df,
-                        pq.read_table(
-                            source=f'{file_path}.parquet',
-                            filesystem=self._connection
-                        ).to_pandas()])
-                except Exception as e:
-                    context.log.error(f"Error reading {file_path}.parquet: {e}")
-                    df = pd.concat([
-                        df,
-                        pd.DataFrame()])
-        return df
+        if context.has_partition_key or context.has_asset_partitions:
+            context.log.info(
+                f"Reading {context.asset_key} | {len(context.asset_partition_keys)} | {context.has_partition_key} | {context.has_asset_partitions}")
+            asset_partitions_def = context.asset_partitions_def
+            if len(context.asset_partition_keys) >= 1:
 
+                asset_partitions_def = context.asset_partitions_def
+                partition_keys = context.asset_partition_keys
+                max_workers = 10
+                batch_size = 50
+
+                def load_batch(batch_start, batch_end):
+                    batch_df = pd.DataFrame()
+                    for i in range(batch_start, batch_end):
+                        partition_key = partition_keys[i]
+                        file_path = '/'.join(
+                            [self.bucket_name, *context.asset_key.path, partition_key.replace('-', '')])
+                        try:
+                            _partition_df = pq.read_table(
+                                source=f'{file_path}.parquet',
+                                filesystem=self._connection,
+                            ).to_pandas()
+
+                            batch_df = pd.concat([
+                                batch_df,
+                                _partition_df.astype(str)
+                            ])
+                        except FileNotFoundError:
+                            context.log.warning(f"File {file_path}.parquet not found")
+                        except Exception as e:
+                            context.log.error(f"Error reading {file_path}.parquet: {e} | {type(e)}")
+                    return batch_df
+
+                """ 
+                    Load the partitions in parallel
+                  """
+
+                num_partitions = len(context.asset_partition_keys)
+
+                # Use ThreadPoolExecutor to process batches in parallel
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    futures = []
+                    for batch_start in range(0, num_partitions, batch_size):
+                        batch_end = min(batch_start + batch_size, num_partitions)
+                        context.log.info(f"Submitting batch {batch_start} to {batch_end - 1} of {num_partitions}")
+                        futures.append(executor.submit(load_batch, batch_start, batch_end))
+
+            # Collect results as each batch completes
+            for future in as_completed(futures):
+                df = pd.concat([df, future.result()])
+        else:
+            context.log.info(f"Reading {context.asset_key}")
+            file_path = self.__get_path(context)
+            try:
+                df = pq.read_table(
+                    source=f'{file_path}.parquet',
+                    filesystem=self._connection
+                ).to_pandas()
+            except FileNotFoundError as e:
+                context.log.warning(f"File {file_path}.parquet not found")
+            except Exception as e:
+                # Log the Exception Type
+                context.log.error(f"Error reading {file_path}.parquet: {e} | {type(e)}")
+                df = pd.DataFrame()
+
+        return df.astype(object).convert_dtypes(infer_objects=True)
 
 
 @dg.io_manager

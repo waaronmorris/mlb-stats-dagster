@@ -1,0 +1,55 @@
+version: 2
+
+sources:
+  - name: cloudflare
+    meta:
+      external_location: "r2://mlb-stats/{meta['config']['folder']}/{meta['config']['file_name']}.parquet"
+    tables:
+      - name: stg_box_score
+        description: "Box Scores for MLB games"
+        meta:
+          external_location: "r2://mlb-stats/stage/mlb/box_scores/box_score.parquet"
+          config:
+            folder: "stage/mlb"
+            file_name: "box_score.parquet"
+          dagster:
+            asset_key: ["stage", "mlb", "box_scores", "box_score"]
+            group: "mlb_stats"
+            tags:
+              website: "mlb.com"
+      - name: stg_mlb_schedule
+        description: "Schedule of MLB games"
+        meta:
+          external_location: "r2://mlb-stats/stage/mlb/schedule/schedule.parquet"
+          config:
+            folder: "stage/mlb"
+            file_name: "schedule.parquet"
+          dagster:
+            asset_key: ["stage", "mlb", "schedule", "schedule"]
+            group: "mlb_stats"
+            tags:
+              website: "mlb.com"
+      - name: raw_league_transactions
+        description: "Raw League Transactions"
+        meta:
+          external_location: "r2://mlb-stats/raw/ottoneu/league_transactions.parquet"
+          config:
+            folder: "raw/ottoneu"
+            file_name: "league_transactions.parquet"
+          dagster:
+            asset_key: ["raw", "ottoneu", "league_transactions"]
+            group: "ottoneu"
+            tags:
+              website: "ottoneu.fangraphs"
+      - name: ottoneu_player_universe
+        description: "Ottoneu Player Universe"
+        meta:
+          external_location: "r2://mlb-stats/raw/ottoneu/ottoneu_player_universe.parquet"
+          config:
+            folder: "raw/ottoneu"
+            file_name: "ottoneu_player_universe.parquet"
+          dagster:
+            asset_key: ["raw", "ottoneu", "ottoneu_player_universe"]
+            group: "ottoneu"
+            tags:
+              website: "ottoneu.fangraphs"

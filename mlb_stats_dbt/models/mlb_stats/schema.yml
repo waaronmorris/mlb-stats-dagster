@@ -1,9 +1,0 @@
-
-version: 2
-
-models:
-  - name: box_scores
-    description: 'Box scores for MLB games'
-    metadata:
-      dagster:
-        asset_key: "stage_mlb_box_scores"
